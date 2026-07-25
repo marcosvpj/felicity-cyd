@@ -5,6 +5,26 @@ import (
 	"time"
 )
 
+func TestLevelFor(t *testing.T) {
+	tests := []struct {
+		kwhEst float64
+		want   Level
+	}{
+		{0, LevelBad},
+		{2.4999, LevelBad},
+		{2.5, LevelOk}, // lower bound inclusive
+		{3.5, LevelOk},
+		{4.4999, LevelOk},
+		{4.5, LevelGood}, // lower bound inclusive
+		{10, LevelGood},
+	}
+	for _, tt := range tests {
+		if got := LevelFor(tt.kwhEst); got != tt.want {
+			t.Errorf("LevelFor(%v) = %v, want %v", tt.kwhEst, got, tt.want)
+		}
+	}
+}
+
 func TestEstimate(t *testing.T) {
 	mkTime := func(day string, hour int) time.Time {
 		tm, err := time.Parse("2006-01-02T15:04", day+"T00:00")

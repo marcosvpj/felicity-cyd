@@ -31,6 +31,13 @@ func NewClient() *Client {
 	return &Client{httpClient: http.DefaultClient, baseURL: defaultBaseURL}
 }
 
+// NewClientWithBaseURL points the client at a different forecast endpoint,
+// e.g. an httptest server or a deliberately unreachable host to exercise the
+// "Open-Meteo is down" path in tests.
+func NewClientWithBaseURL(baseURL string) *Client {
+	return &Client{httpClient: http.DefaultClient, baseURL: baseURL}
+}
+
 // FetchShortwaveRadiation requests hourly shortwave_radiation for the given
 // coordinates, aligned to America/Sao_Paulo so daily aggregation matches local days.
 func (c *Client) FetchShortwaveRadiation(ctx context.Context, lat, lon float64, forecastDays int) (*Response, error) {

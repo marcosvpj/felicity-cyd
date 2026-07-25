@@ -9,13 +9,45 @@ const (
 	DefaultDerate   = 0.7
 )
 
+// Level is the Spec §4 good/ok/bad generation tier for a day.
+type Level string
+
+const (
+	LevelBad  Level = "bad"
+	LevelOk   Level = "ok"
+	LevelGood Level = "good"
+)
+
+// Thresholds approved by Marcos in CYDSOL-1 (planner log a0e939e8, based on a
+// year of Open-Meteo archive data for this site). Spec §4 still shows the
+// ⚠️ placeholder pending consolidation — propose it be filled from this log.
+const (
+	thresholdBadOk  = 2.5 // kwh_est below this is bad
+	thresholdOkGood = 4.5 // kwh_est at or above this is good
+)
+
+// LevelFor derives the good/ok/bad tier for an estimated daily generation.
+func LevelFor(kwhEst float64) Level {
+	switch {
+	case kwhEst < thresholdBadOk:
+		return LevelBad
+	case kwhEst < thresholdOkGood:
+		return LevelOk
+	default:
+		return LevelGood
+	}
+}
+
 // HourlyReading is one hour of measured shortwave radiation (W/m²).
 type HourlyReading struct {
 	Time         time.Time
 	RadiationWm2 float64
 }
 
-// DayEstimate is the estimated generation for a single calendar day.
+// DayEstimate is the estimated generation for a single calendar day. It
+// carries no Level: the wire-contract rounding of kwh_est (output.BuildPayload)
+// happens after this, and the level must be derived from the rounded value
+// so the two published fields can't disagree at a threshold boundary.
 type DayEstimate struct {
 	Date   string // YYYY-MM-DD
 	KwhEst float64
