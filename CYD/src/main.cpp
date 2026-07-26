@@ -65,13 +65,30 @@ static Outlook        cachedOutlook = {};  // last known-good forecast (Spec §3
 // would leave the cache stale in NVS forever, undetected.
 static bool           outlookCachePersisted = false;
 
-// Logs the forecast resolved against `today`, for both the boot-time proof
-// (cache survived reboot) and each refresh cycle. `today` must come from a
-// synced clock — see resolveOutlook()'s caller contract in outlook.h.
-static void logResolvedOutlook(const struct tm& today, const char* tag) {
+// Resolves the cache against `today` (Spec §5). Cheap (<=3 strcmp), so
+// called every loop tick to feed the display — not just on the 15-min
+// fetch cycle — so the on-screen forecast (and the degraded state) tracks
+// the calendar date rolling over, not just fetch events.
+//
+// Without a synced clock there is no trustworthy `today` to compare
+// against, so this returns the same "nothing to show" shape as an empty
+// cache (count 0, degraded) rather than risk a bogus date making every
+// cached entry look like it's in the future (see resolveOutlook's caller
+// contract in outlook.h).
+static ResolvedForecast currentForecast(bool timeSynced, const struct tm& today) {
+    if (!timeSynced) return ResolvedForecast{};
     char todayDate[11];
     strftime(todayDate, sizeof(todayDate), "%Y-%m-%d", &today);
-    ResolvedForecast rf = resolveOutlook(cachedOutlook, todayDate, time(nullptr));
+    return resolveOutlook(cachedOutlook, todayDate, time(nullptr));
+}
+
+// Pure logging over an already-resolved forecast — callers resolve once
+// per tick (currentForecast) and pass the result in here, rather than
+// this function resolving again against whatever `cachedOutlook` holds
+// at call time.
+static void logResolvedOutlook(const ResolvedForecast& rf, const struct tm& today, const char* tag) {
+    char todayDate[11];
+    strftime(todayDate, sizeof(todayDate), "%Y-%m-%d", &today);
     Serial.printf("[outlook] %s today=%s degraded=%d ageSec=%u matched=%u\n",
                   tag, todayDate, rf.degraded, rf.cacheAgeSec, rf.count);
     for (uint8_t i = 0; i < rf.count; i++) {
@@ -122,7 +139,7 @@ void setup() {
     // Boot-time proof that the cache survives a reboot (Spec §5 Done):
     // resolve it against today's date as soon as we have a clock, without
     // waiting for the first fetch cycle.
-    if (getLocalTime(&ti, 0)) logResolvedOutlook(ti, "boot");
+    if (getLocalTime(&ti, 0)) logResolvedOutlook(currentForecast(true, ti), ti, "boot");
 
     displayStatus("Connecting to battery...", TFT_WHITE);
 }
@@ -182,8 +199,14 @@ void loop() {
             Serial.printf("[outlook] %s fetch failed\n", ts);
         }
 
-        logResolvedOutlook(nowTm, "resolve");
     }
+
+    // Resolved once per tick, after any cache update above, and reused for
+    // both the log (only printed when a fetch was due) and the render
+    // (every tick) — so the on-screen forecast also tracks the calendar
+    // date rolling over to "degraded" between fetches (Spec §5).
+    ResolvedForecast forecast = currentForecast(timeSynced, nowTm);
+    if (outlookDue) logResolvedOutlook(forecast, nowTm, "resolve");
 
     BatteryReading r;
     if (readBattery(HOST, PORT, r)) {
@@ -192,7 +215,7 @@ void loop() {
         uint32_t spanSec = histCount > 0 ? (millis() - histFirstMs) / 1000 : 0;
         displayReading(r, BATTERY_CAPACITY_AH,
                        socHist, histHead, histCount, HIST_SIZE,
-                       spanSec, timeStr);
+                       spanSec, timeStr, forecast);
         Serial.printf("OK  V=%.2f I=%.1f SOC=%.1f\n",
                       r.voltageV, r.currentA, r.socPct);
     } else {
@@ -201,7 +224,7 @@ void loop() {
             uint32_t spanSec = histCount > 0 ? (millis() - histFirstMs) / 1000 : 0;
             displayReading(lastGood, BATTERY_CAPACITY_AH,
                            socHist, histHead, histCount, HIST_SIZE,
-                           spanSec, timeStr);
+                           spanSec, timeStr, forecast);
         } else {
             displayStatus("No data", TFT_RED);
         }
