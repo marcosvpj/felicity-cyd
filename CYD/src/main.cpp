@@ -4,6 +4,7 @@
 #include <time.h>
 #include "felicity.h"
 #include "display.h"
+#include "outlook.h"
 
 // --- Config: fill in for your environment ----------------------------------
 // Provide real values in include/secrets.h (gitignored) — see README.
@@ -15,6 +16,10 @@ static const uint16_t PORT              = 53970;
 static const uint32_t POLL_INTERVAL_MS  = 10000;           // 10 s
 static const float    BATTERY_CAPACITY_AH = 100.0f;        // nameplate Ah of your pack
 static const long     UTC_OFFSET_SEC    = -3 * 3600;       // BRT = UTC-3; adjust for your zone
+
+// Forecast pull (Spec §3: second, independent path — never gates the SoC path).
+static const char*    OUTLOOK_URL             = "https://dashboard-solar.marcosvpj.xyz/outlook.json";
+static const uint32_t OUTLOOK_POLL_INTERVAL_MS = 15UL * 60 * 1000;  // 15 min
 // ---------------------------------------------------------------------------
 
 // --- SOC history (circular buffer, one entry per successful poll) ----------
@@ -40,9 +45,19 @@ static void getTimeStr(char* buf, size_t sz) {
     if (getLocalTime(&ti, 0)) snprintf(buf, sz, "%02d:%02d", ti.tm_hour, ti.tm_min);
     else                       snprintf(buf, sz, "--:--");
 }
+
+// Full date+time for the outlook fetch log — the point of NTP here is date
+// resolution (Spec §5), so the log must show the date, not just HH:MM.
+static void getTimestampStr(char* buf, size_t sz) {
+    struct tm ti;
+    if (getLocalTime(&ti, 0)) strftime(buf, sz, "%Y-%m-%dT%H:%M:%S", &ti);
+    else                       snprintf(buf, sz, "unsynced");
+}
 // ---------------------------------------------------------------------------
 
 static BatteryReading lastGood;
+static uint32_t       lastOutlookFetchMs = 0;
+static bool           outlookFetchedOnce = false;
 
 static bool connectWifi(uint32_t timeoutMs = 15000) {
     WiFi.mode(WIFI_STA);
@@ -88,6 +103,32 @@ void loop() {
 
     char timeStr[8];
     getTimeStr(timeStr, sizeof(timeStr));
+
+    // Forecast pull — a separate connection from the battery TCP client
+    // (Spec §3), so a fetch failure never corrupts or blocks SoC data.
+    // It does run synchronously here before the read below, so a slow
+    // fetch can delay this cycle's SoC refresh by up to TIMEOUT_MS
+    // (outlook.cpp); harmless at a 15-min cadence for v0.
+    //
+    // Wait for NTP before the first attempt so the log's timestamp is
+    // always real (Spec §5 needs dates, not "unsynced").
+    struct tm nowTm;
+    bool timeSynced = getLocalTime(&nowTm, 0);
+    bool outlookDue = timeSynced &&
+        (!outlookFetchedOnce || millis() - lastOutlookFetchMs >= OUTLOOK_POLL_INTERVAL_MS);
+    if (outlookDue) {
+        outlookFetchedOnce = true;
+        lastOutlookFetchMs = millis();
+
+        String outlookJson;
+        char ts[24];
+        getTimestampStr(ts, sizeof(ts));
+        if (fetchOutlook(OUTLOOK_URL, outlookJson)) {
+            Serial.printf("[outlook] %s %s\n", ts, outlookJson.c_str());
+        } else {
+            Serial.printf("[outlook] %s fetch failed\n", ts);
+        }
+    }
 
     BatteryReading r;
     if (readBattery(HOST, PORT, r)) {
