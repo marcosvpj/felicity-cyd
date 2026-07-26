@@ -58,6 +58,27 @@ static void getTimestampStr(char* buf, size_t sz) {
 static BatteryReading lastGood;
 static uint32_t       lastOutlookFetchMs = 0;
 static bool           outlookFetchedOnce = false;
+static Outlook        cachedOutlook = {};  // last known-good forecast (Spec §3 camada 2 / §5)
+// Tracks whether NVS currently holds `cachedOutlook`, so a fetch that
+// returns the same `fetched` timestamp doesn't skip the NVS write when the
+// *previous* write silently failed (Preferences::begin() can fail) — that
+// would leave the cache stale in NVS forever, undetected.
+static bool           outlookCachePersisted = false;
+
+// Logs the forecast resolved against `today`, for both the boot-time proof
+// (cache survived reboot) and each refresh cycle. `today` must come from a
+// synced clock — see resolveOutlook()'s caller contract in outlook.h.
+static void logResolvedOutlook(const struct tm& today, const char* tag) {
+    char todayDate[11];
+    strftime(todayDate, sizeof(todayDate), "%Y-%m-%d", &today);
+    ResolvedForecast rf = resolveOutlook(cachedOutlook, todayDate, time(nullptr));
+    Serial.printf("[outlook] %s today=%s degraded=%d ageSec=%u matched=%u\n",
+                  tag, todayDate, rf.degraded, rf.cacheAgeSec, rf.count);
+    for (uint8_t i = 0; i < rf.count; i++) {
+        Serial.printf("[outlook]   +%u %s level=%s kwh_est=%.2f\n",
+                      i + 1, rf.days[i].date, rf.days[i].level, rf.days[i].kwhEst);
+    }
+}
 
 static bool connectWifi(uint32_t timeoutMs = 15000) {
     WiFi.mode(WIFI_STA);
@@ -75,6 +96,15 @@ void setup() {
     delay(200);
 
     displayInit();
+
+    if (loadOutlookCache(cachedOutlook)) {
+        outlookCachePersisted = true;
+        Serial.printf("[outlook] loaded cache from NVS, fetched=%s days=%u\n",
+                      cachedOutlook.fetched, cachedOutlook.count);
+    } else {
+        Serial.println("[outlook] no cache in NVS");
+    }
+
     displayStatus("Connecting WiFi...", TFT_WHITE);
 
     if (!connectWifi()) {
@@ -89,6 +119,10 @@ void setup() {
     // Wait up to 2 s for NTP; display will show "--:--" if it doesn't arrive
     struct tm ti;
     for (int i = 0; i < 8 && !getLocalTime(&ti, 0); i++) delay(250);
+    // Boot-time proof that the cache survives a reboot (Spec §5 Done):
+    // resolve it against today's date as soon as we have a clock, without
+    // waiting for the first fetch cycle.
+    if (getLocalTime(&ti, 0)) logResolvedOutlook(ti, "boot");
 
     displayStatus("Connecting to battery...", TFT_WHITE);
 }
@@ -124,10 +158,31 @@ void loop() {
         char ts[24];
         getTimestampStr(ts, sizeof(ts));
         if (fetchOutlook(OUTLOOK_URL, outlookJson)) {
-            Serial.printf("[outlook] %s %s\n", ts, outlookJson.c_str());
+            Outlook parsed;
+            if (parseOutlook(outlookJson, parsed)) {
+                bool changed = strcmp(parsed.fetched, cachedOutlook.fetched) != 0;
+                cachedOutlook = parsed;
+                // Only touch NVS when the payload changed or the last write
+                // didn't stick — the VPS cache means most 15-min polls
+                // return the same `fetched`, and this is a device meant to
+                // run for years unattended, so skip the write when possible.
+                if (changed || !outlookCachePersisted) {
+                    outlookCachePersisted = saveOutlookCache(outlookJson);
+                }
+                Serial.printf("[outlook] %s fetched OK (%s), fetched=%s days=%u nvsOk=%d\n",
+                              ts, changed ? "new" : "unchanged",
+                              parsed.fetched, parsed.count, outlookCachePersisted);
+            } else {
+                // Don't cache a malformed payload over a good one (Spec §5
+                // Done: cache must keep serving the last known-good forecast).
+                Serial.printf("[outlook] %s fetch OK but parse failed, raw=%s\n",
+                              ts, outlookJson.c_str());
+            }
         } else {
             Serial.printf("[outlook] %s fetch failed\n", ts);
         }
+
+        logResolvedOutlook(nowTm, "resolve");
     }
 
     BatteryReading r;
