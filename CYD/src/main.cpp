@@ -22,18 +22,24 @@ static const char*    OUTLOOK_URL             = "https://dashboard-solar.marcosv
 static const uint32_t OUTLOOK_POLL_INTERVAL_MS = 15UL * 60 * 1000;  // 15 min
 // ---------------------------------------------------------------------------
 
-// --- SOC history (circular buffer, one entry per successful poll) ----------
-static const uint16_t HIST_SIZE = 8640;  // 8640 × 10 s = 24 h of history
+// --- SOC history (circular buffer, sampled on its own cadence) -------------
+// Spec §6: ~288 samples at 5 min = 24 h of sparkline history. Sampling runs
+// on its own timer, decoupled from the 10 s battery poll (POLL_INTERVAL_MS)
+// -- otherwise the buffer would need 8640 slots to cover the same 24 h.
+static const uint32_t HIST_SAMPLE_INTERVAL_MS = 5UL * 60 * 1000;  // 5 min
+static const uint16_t HIST_SIZE = 288;   // 288 × 5 min = 24 h of history
 static uint8_t  socHist[HIST_SIZE];
-static uint16_t histHead      = 0;
-static uint16_t histCount     = 0;
-static uint32_t histFirstMs   = 0;
+static uint16_t histHead       = 0;
+static uint16_t histCount      = 0;
+static uint32_t histFirstMs    = 0;
+static uint32_t lastHistPushMs = 0;
+static bool     histPushedOnce = false;
 
 static void pushSoc(float soc) {
     if (histCount == 0) {
         histFirstMs = millis();
     } else if (histCount >= HIST_SIZE) {
-        histFirstMs += POLL_INTERVAL_MS;   // oldest slot is being overwritten
+        histFirstMs += HIST_SAMPLE_INTERVAL_MS;   // oldest slot is being overwritten
     }
     socHist[histHead] = (uint8_t)constrain((int)roundf(soc), 0, 100);
     histHead = (histHead + 1) % HIST_SIZE;
@@ -211,13 +217,19 @@ void loop() {
     BatteryReading r;
     if (readBattery(HOST, PORT, r)) {
         lastGood = r;
-        pushSoc(r.socPct);
+        // History samples at its own 5 min cadence (Spec §6), independent of
+        // this 10 s poll -- the buffer is sized for that slower rate.
+        if (!histPushedOnce || millis() - lastHistPushMs >= HIST_SAMPLE_INTERVAL_MS) {
+            histPushedOnce = true;
+            lastHistPushMs = millis();
+            pushSoc(r.socPct);
+        }
         uint32_t spanSec = histCount > 0 ? (millis() - histFirstMs) / 1000 : 0;
         displayReading(r, BATTERY_CAPACITY_AH,
                        socHist, histHead, histCount, HIST_SIZE,
                        spanSec, timeStr, forecast);
-        Serial.printf("OK  V=%.2f I=%.1f SOC=%.1f\n",
-                      r.voltageV, r.currentA, r.socPct);
+        Serial.printf("OK  V=%.2f I=%.1f SOC=%.1f histCount=%u\n",
+                      r.voltageV, r.currentA, r.socPct, histCount);
     } else {
         Serial.println("read failed");
         if (lastGood.valid) {
