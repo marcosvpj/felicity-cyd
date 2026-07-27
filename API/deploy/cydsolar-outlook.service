@@ -1,0 +1,12 @@
+[Unit]
+Description=Generate outlook.json (Spec §4) from Open-Meteo
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Adjust User/Group to whoever owns /var/www/dashboard-solar (or wherever
+# Caddy's site root actually is) so the written file is Caddy-readable.
+User=cydsolar
+Group=cydsolar
+ExecStart=/opt/cydsolar-api/cydsolar-api -out /var/www/dashboard-solar/outlook.json

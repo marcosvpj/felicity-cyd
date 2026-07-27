@@ -42,7 +42,8 @@ static void fmtHM(char* buf, size_t sz, float hours) {
 void displayReading(const BatteryReading& r, float capacityAh,
                     const uint8_t* hist, uint16_t histHead,
                     uint16_t histCount, uint16_t histSize,
-                    uint32_t histSpanSec, const char* timeStr) {
+                    uint32_t histSpanSec, const char* timeStr,
+                    const ResolvedForecast& outlook) {
 
     const uint16_t bg  = bgForSoc(r.socPct);
     const uint16_t fg  = TFT_BLACK;
@@ -57,6 +58,29 @@ void displayReading(const BatteryReading& r, float capacityAh,
     tft.drawString(timeStr, 305, 11, 2);
     if (r.fault || r.warning)
         tft.fillCircle(314, 11, 5, r.fault ? TFT_RED : TFT_ORANGE);
+
+    // CYDSOL-6: no redesign yet (that's Spec §6/§7, CYDSOL-7+) -- just prove
+    // the VPS -> pull -> cache -> render pipeline works, wedged into the
+    // gap between "TREND" and the clock. `outlook` is already resolved
+    // against today's date by the caller (Spec §5); this function only
+    // renders whatever it's given.
+    // Kept short on purpose: this has to fit the gap between "TREND" and
+    // the clock without measuring text width at runtime (CYDSOL-6 is
+    // explicitly "no redesign" -- CYDSOL-7 owns the real layout).
+    char outlookBuf[32];
+    if (outlook.count > 0) {
+        const OutlookDay& tomorrow = outlook.days[0];
+        snprintf(outlookBuf, sizeof(outlookBuf), "AMANHA %.1f %s",
+                 tomorrow.kwhEst, tomorrow.level);
+    } else if (outlook.cacheAgeSec > 0) {
+        snprintf(outlookBuf, sizeof(outlookBuf), "PREV STALE %ud",
+                 (unsigned)(outlook.cacheAgeSec / 86400));
+    } else {
+        snprintf(outlookBuf, sizeof(outlookBuf), "PREV --");
+    }
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString(outlookBuf, 160, 11, 2);
+
     tft.drawFastHLine(0, 22, 320, dim);
 
     // ── Big SOC ────────────────────────────────────── y 23..103 ─
