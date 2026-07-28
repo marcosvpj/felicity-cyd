@@ -1,84 +1,147 @@
-# felicity-cyd-v0
+# CYD — firmware
 
-Read-only monitor for Felicity LFP battery, running on ESP32 Cheap Yellow
-Display. Connects to the dongle's local TCP API (port 53970), polls every
-10 s, renders SOC / V / A / cell delta / temps on the TFT.
+ESP32 firmware for the Cheap Yellow Display. Reads the Felicity battery over
+the LAN, pulls a generation forecast from an HTTP endpoint, renders both on a
+single non-interactive screen.
 
-No internet required. No cloud. No MQTT (yet).
+Product overview and photos: [root README](../README.md).
 
-## Setup
+## Build
 
-1. Install PlatformIO (VSCode extension or CLI).
-2. Copy `include/secrets.h.example` to `include/secrets.h` and fill in
-   `SECRET_WIFI_SSID`, `SECRET_WIFI_PSK`, `SECRET_HOST`. This file is
-   gitignored — never commit it.
-3. Plug CYD into USB, run `make upload`.
+```sh
+cp include/secrets.h.example include/secrets.h   # gitignored
+make upload
+```
 
-## Makefile
+| Target | Does |
+|---|---|
+| `make build` | `pio run` — compile only. |
+| `make flash` | Flash the binaries already in `.pio/build/<env>/` via `esptool.py`, no rebuild. |
+| `make upload` | `build` + `flash`. |
 
-| Target        | Does |
-|---------------|------|
-| `make build`  | Compile the firmware (`pio run`), no upload. |
-| `make flash`  | Flash the binaries already in `.pio/build/<env>/` to the board via `esptool.py`, without rebuilding. |
-| `make upload` | `build` + `flash` — compile then flash in one step. |
+Defaults: `ENV=cyd`, `PORT=/dev/ttyUSB0`, `BAUD=921600`. Override inline:
+`make flash PORT=/dev/ttyACM0`.
 
-Defaults: `ENV=cyd`, `PORT=/dev/ttyUSB0`, `BAUD=921600`. Override on the
-command line, e.g. `make flash PORT=/dev/ttyACM0`.
+> If your PlatformIO core lives somewhere other than `~/.platformio`, pass it in:
+> `make flash PIO_CORE=/path/to/.platformio`.
 
-## CYD model assumed
+### Board
 
-ESP32-2432S028R — the most common variant. ILI9341 driver, 320x240,
-resistive touch (touch not used here), USB-C or micro-USB depending on rev.
+Assumes **ESP32-2432S028R** — the common CYD variant: ILI9341, 320×240,
+resistive touch (unused here). All TFT_eSPI pins are passed as **build flags**
+in `platformio.ini`; the library's `User_Setup.h` is never edited, so a clean
+`pio` install builds this repo as-is.
 
-If your board uses a different driver (some clones ship ST7789), change
-`-DILI9341_2_DRIVER=1` in `platformio.ini` accordingly.
+Some clones ship an ST7789. If yours does, swap `-DILI9341_2_DRIVER=1` in
+`platformio.ini` for the matching driver define.
+
+## Configuration
+
+Everything environment-specific lives in `include/secrets.h` (gitignored):
+
+```c
+#define SECRET_WIFI_SSID "..."
+#define SECRET_WIFI_PSK  "..."
+#define SECRET_HOST      "192.168.1.100"   // dongle's LAN IP
+#define SECRET_OUTLOOK_URL "https://your-outlook-host.example/outlook.json"
+#define SECRET_BATTERY_CAPACITY_AH 100.0f  // nameplate Ah of your pack
+#define SECRET_UTC_OFFSET_SEC (-3 * 3600)  // your timezone
+```
+
+`SECRET_OUTLOOK_URL` points at your own forecast service — see
+[`API/README.md`](../API/README.md). Running without one is fine too; the
+display just falls back to its degraded no-forecast state.
+
+Things still hardcoded in `main.cpp` that you will want to change:
+
+| Constant | Default | Note |
+|---|---|---|
+| `POLL_INTERVAL_MS` | 10 s | Battery poll. |
+| `OUTLOOK_POLL_INTERVAL_MS` | 15 min | Forecast poll. |
 
 ## Architecture
 
-Three modules, each replaceable:
+Four translation units, each replaceable in isolation:
 
-- `felicity.{h,cpp}` — protocol client. Pure: takes host/port, returns
-  `BatteryReading`. No display, no Serial dependency. To swap for Modbus
-  later, only this file changes.
-- `display.{h,cpp}` — renderer. Pure: takes a `BatteryReading`, renders.
-  No network dependency. To change layout or move to round display
-  (GC9A01), only this file changes.
-- `main.cpp` — orchestration: WiFi, polling cadence, error handling.
+```
+felicity.{h,cpp}   protocol client   host/port  -> BatteryReading
+outlook.{h,cpp}    forecast client   URL        -> Outlook -> ResolvedForecast
+display.{h,cpp}    renderer          structs    -> pixels
+main.cpp           orchestration     WiFi, NTP, cadence, ring buffer, errors
+```
 
-## Pitfalls observed during development
+- `felicity` has no display and no `Serial` dependency. Swapping the battery
+  source for Modbus RTU means rewriting this file only.
+- `outlook` owns fetch, parse, the NVS cache, and date resolution. It has no
+  display dependency.
+- `display` has no network dependency. Moving to a round GC9A01 means rewriting
+  this file only.
+- `main` is the only place that knows about time, WiFi, and cadence.
 
-- **The dongle stays silent on unknown commands** instead of returning an
-  error. The reader uses JSON brace-counting to detect end-of-response
-  rather than relying on socket close.
-- **Response can span multiple TCP segments** (~800 bytes for `real infor`).
-  Read accumulates until JSON is balanced.
-- **Cell array has 16 slots, only the first N are valid**, marked by
-  sentinel `32767` for the rest. 24V LFP = 8 cells.
-- **Current unit is 0.1 A signed**, not 1 A. `-1` in the wire means -0.1 A.
-- **Power slot (`Batt[2][0]`) is `null` when idle**, not 0. Derive P = V·I
-  in the consumer if you need it.
-- **Total voltage in `Batt[0]` and `BattList[0]` differ by ~40 mV.**
-  Hypothesis: one is operational, one is raw cell sum. Treat `Batt[0]` as
-  canonical for display; log both if you start persisting.
-- **Cell #5 runs ~80 mV high at top of charge.** Not progressing over
-  hours. Likely cosmetic LFP top-of-curve behavior; revisit if it widens.
+### Two independent data paths
 
-## Known unknowns
+The battery read is over plain TCP on the LAN and depends on nothing else. The
+forecast is an HTTPS pull from a VPS. **A failure in the forecast path never
+gates or delays the battery path** — that separation is the point, not an
+accident of layering. Internet at this site is intermittent by design (Starlink
+gets powered down when I go to bed); the battery number must keep updating
+regardless.
 
-- Bit meanings of `Estate`, `Bfault`, `Bwarn` not decoded. Observe what
-  changes when load/charge state shifts.
-- Two extra slots in `Batsoc` (`1000`, `200000`) likely SOH-equivalent
-  and lifetime Ah throughput. Compare values across days to confirm.
-- The `wifilocalMonitor:set cmd=<JSON>` write API needs further APK
-  reverse engineering (jadx) to discover the JSON schema for each
-  setting. Not relevant for read-only v0.
+### Cache and date resolution
 
-## Next milestones
+The forecast is cached in NVS as **raw JSON bytes**, not as the decoded struct,
+so a cache load goes through the exact same `parseOutlook` path as a live fetch.
+One parser, one set of bugs.
 
-- v0.1: persist last reading to NVS so display survives WiFi blips
-  without a "No data" flash on boot.
-- v0.2: add touch interaction — tap to cycle between SOC view,
-  per-cell bar chart, raw flag decode.
-- v1:   move polling into the Debian notebook (Go service), CYD becomes
-  an MQTT subscriber, multiple displays possible, persistent metrics
-  via InfluxDB.
+Entries are keyed by **absolute date** (`YYYY-MM-DD`), never by "tomorrow". A
+cache holding "tomorrow = 2.8 kWh" becomes a lie the moment the device is
+offline across a midnight boundary. `resolveOutlook()` compares cached dates
+against today and returns only strictly-future entries; when none remain it
+returns `degraded`, and the display shows that state rather than stale numbers.
+
+`resolveOutlook()` must not be called with an unsynced clock — the 1970 epoch
+default would make every cached date look like the future and report a
+confidently wrong forecast. `main.cpp` guards this: no NTP sync, no forecast.
+The clock coasts on the ESP32's internal timer once synced, which drifts by
+seconds per day — irrelevant when the only question is which calendar day it is.
+
+### SoC history
+
+288-slot ring buffer in RAM, sampled every 5 min = 24 h of sparkline. Sampling
+runs on its own timer, decoupled from the 10 s battery poll — at poll cadence
+the same span would need 8640 slots. History does not survive reboot; that's
+accepted for now.
+
+## Protocol
+
+The Felicity WiFi dongle listens on **TCP :53970**, speaks ASCII commands,
+answers JSON, and has no authentication. This firmware issues a single command:
+
+```
+wifilocalMonitor:get dev real infor
+```
+
+The framing rules, field layout, unit conversions and the list of still-undecoded
+fields are documented separately in [`docs/PROTOCOL.md`](../docs/PROTOCOL.md) —
+that document is useful even if you're not building this display.
+
+Reference implementation: `src/felicity.cpp`.
+
+## Observed quirks
+
+- **Cell #5 runs ~80 mV high at top of charge.** Stable over hours, not
+  widening. Read as cosmetic LFP top-of-curve behaviour rather than drift —
+  revisit if the spread grows.
+- **The ILI9341 shifts colour off-axis.** Green and orange converge when viewed
+  from the side, which is exactly how a wall-mounted screen gets read. Levels
+  are therefore distinguished by **icon shape as well as hue**, and never by hue
+  alone.
+
+## Roadmap
+
+- Forecast icons derived from level (in progress).
+- Degraded/stale forecast state needs its own visual treatment, not just an
+  absence.
+- Persist SoC history across reboots.
+- Optional MQTT publish, so the same reading can feed InfluxDB/Grafana without a
+  second poller hitting the dongle.
