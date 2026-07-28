@@ -2,9 +2,13 @@ ENV  ?= cyd
 PORT ?= /dev/ttyUSB0
 BAUD ?= 921600
 
+# PlatformIO core dir — override if you use a non-default PLATFORMIO_CORE_DIR,
+# e.g. `make flash PIO_CORE=/path/to/core`.
+PIO_CORE ?= $(HOME)/.platformio
+
 BUILD_DIR   := .pio/build/$(ENV)
-ESPTOOL     := /home/marcosvpjr/.platformio/packages/tool-esptoolpy/esptool.py
-BOOT_APP0   := /home/marcosvpjr/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
+ESPTOOL     := $(PIO_CORE)/packages/tool-esptoolpy/esptool.py
+BOOT_APP0   := $(PIO_CORE)/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 
 .PHONY: build flash upload
 
@@ -13,6 +17,8 @@ build:
 
 # Flash the binaries already in $(BUILD_DIR) without rebuilding.
 flash:
+	@test -f "$(ESPTOOL)" || { echo "esptool not found at $(ESPTOOL) -- set PIO_CORE"; exit 1; }
+	@test -f "$(BOOT_APP0)" || { echo "boot_app0.bin not found at $(BOOT_APP0) -- set PIO_CORE"; exit 1; }
 	python3 "$(ESPTOOL)" --chip esp32 --port "$(PORT)" --baud $(BAUD) \
 		--before default_reset --after hard_reset write_flash -z \
 		--flash_mode dio --flash_freq 40m --flash_size detect \
