@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Pre-commit secret scan. Blocks the commit if staged changes look like they
+# contain credentials, keys, or tokens. Repo is public — this is the last
+# line of defense before something leaks to GitHub.
+#
+# False positive? Add `# allow-secret` at the end of the offending line, or
+# add the path to .secretsallow (one glob per line).
+set -euo pipefail
+
+fail=0
+repo_root=$(git rev-parse --show-toplevel)
+allowlist_file="$repo_root/.secretsallow"
+
+is_allowlisted_path() {
+    local f="$1"
+    [[ -f "$allowlist_file" ]] || return 1
+    while IFS= read -r pattern; do
+        [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+        # shellcheck disable=SC2053
+        [[ "$f" == $pattern ]] && return 0
+    done < "$allowlist_file"
+    return 1
+}
+
+# --- 1. Block dangerous filenames outright (secrets.h, .env, key files) ---
+blocked_name_re='(^|/)(secrets\.h|\.env(\..*)?|id_rsa|id_ed25519|id_ecdsa|id_dsa)$|\.(pem|key|p12|pfx|jks|ppk)$|(^|/)credentials\.json$'
+
+while IFS= read -r -d '' f; do
+    is_allowlisted_path "$f" && continue
+    if [[ "$f" == *.example ]]; then
+        continue
+    fi
+    if [[ "$f" =~ $blocked_name_re ]]; then
+        echo "pre-commit: BLOCKED — staged file looks like a secret file: $f" >&2
+        echo "  If this is meant to be public, rename it or add it to .secretsallow" >&2
+        fail=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
+
+# --- 2. Scan added lines in text files for secret-shaped content ---
+declare -a patterns=(
+    'AKIA[0-9A-Z]{16}|AWS access key'
+    '-----BEGIN (RSA|EC|OPENSSH|PGP|DSA) PRIVATE KEY-----|private key block'
+    'gh[pousr]_[A-Za-z0-9]{36,}|GitHub token'
+    'xox[baprs]-[A-Za-z0-9-]{10,}|Slack token'
+    'AIza[0-9A-Za-z_-]{35}|Google API key'
+    'sk_live_[0-9a-zA-Z]{16,}|Stripe live key'
+    'eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|JWT-looking token'
+    '(Authorization:[[:space:]]*Bearer[[:space:]]+[A-Za-z0-9._-]{10,})|Bearer token'
+    '(api[_-]?key|secret|passwd|password|access[_-]?key|private[_-]?key|auth[_-]?token)[[:space:]]*[:=][[:space:]]*[\"'"'"'][^\"'"'"'[:space:]]{8,}[\"'"'"']|hardcoded credential-shaped assignment'
+)
+
+placeholder_re='(your[_-]|example|changeme|xxxx|todo|placeholder|<[a-z_-]+>|\.\.\.|dummy|fake|sample|test[_-]?key|SECRET_WIFI|SECRET_HOST)'
+
+while IFS= read -r -d '' f; do
+    is_allowlisted_path "$f" && continue
+    # Skip binary files
+    git diff --cached -- "$f" | grep -q '^Binary files' && continue
+
+    while IFS= read -r line; do
+        # only look at added lines, skip the +++ header
+        [[ "$line" == +++* ]] && continue
+        [[ "$line" != +* ]] && continue
+        content="${line:1}"
+        [[ "$content" == *"# allow-secret"* ]] && continue
+
+        for entry in "${patterns[@]}"; do
+            regex="${entry%%|*}"
+            label="${entry#*|}"
+            if [[ "$content" =~ $regex ]]; then
+                if [[ "$content" =~ $placeholder_re ]]; then
+                    continue
+                fi
+                echo "pre-commit: BLOCKED — possible $label in $f" >&2
+                echo "  ${content:0:120}" >&2
+                fail=1
+            fi
+        done
+    done < <(git diff --cached -U0 -- "$f")
+done < <(git diff --cached --name-only --diff-filter=ACM -z)
+
+if [[ "$fail" -ne 0 ]]; then
+    echo "" >&2
+    echo "Commit blocked by pre-commit secret scan." >&2
+    echo "Fix the issue, or if this is a false positive, append '# allow-secret'" >&2
+    echo "to the line or add the path to .secretsallow." >&2
+    exit 1
+fi
+
+exit 0

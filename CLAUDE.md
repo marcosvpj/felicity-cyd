@@ -52,3 +52,12 @@ pequena: simples e modular. Desenhar antes de implementar.
 flags** no `platformio.ini` — nunca editar `User_Setup.h` da lib. Comandos
 `pio` rodam a partir de `CYD/` (`pio run -d CYD`, ou `make build` dentro de
 `CYD/`). `CYD/include/secrets.h` é gitignored — nunca commitar.
+
+## Segurança — repo é público
+
+Há um pre-commit hook (`.githooks/pre-commit`) que bloqueia commits com
+segredo aparente (chaves, tokens, senhas, arquivos tipo `secrets.h`/`.env`).
+Clone novo precisa rodar `scripts/setup-hooks.sh` uma vez (seta
+`core.hooksPath`). Falso positivo: `# allow-secret` no fim da linha, ou path
+em `.secretsallow`. Nunca contornar com `--no-verify` sem confirmar com o
+Marcos que não é um segredo real.
