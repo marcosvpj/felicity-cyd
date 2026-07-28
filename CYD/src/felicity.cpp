@@ -57,6 +57,17 @@ bool readBattery(const char* host, uint16_t port, BatteryReading& out) {
     JsonDocument doc;
     if (deserializeJson(doc, raw) != DeserializationError::Ok) return false;
 
+    // A response can be well-formed JSON yet missing the fields we need
+    // (dongle sends a partial/different payload for one poll). ArduinoJson
+    // silently yields 0 for a missing or null path, which would otherwise
+    // masquerade as a real 0V/0% reading and get baked into the SoC
+    // history -- reject it here so the caller keeps showing last-known-good.
+    if (!doc["Batt"][0][0].is<int32_t>() ||
+        !doc["Batt"][1][0].is<int32_t>() ||
+        !doc["Batsoc"][0][0].is<int32_t>()) {
+        return false;
+    }
+
     BatteryReading r;
     r.timestampMs = millis();
 
