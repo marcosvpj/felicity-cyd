@@ -23,9 +23,13 @@ Requer o **MCP planner conectado**. Sem ele, pare e avise.
 4. Implementar em `API/` ou `CYD/` conforme a task, seguindo task + spec +
    convenções abaixo.
 5. Conferir o resultado contra o **Done** da task, item por item.
-6. Concluído e verificado: `submit_for_review(id, ref=<commit SHA>)`.
-   **Nunca** `complete_task` — quem conclui é o Marcos, na UI.
-   Opcional: `create_log` pra registrar decisão ou achado relevante.
+6. Depois de commitar: **sempre** `submit_for_review(id, ref=<commit SHA>)`.
+   Isso não é condicionado a Done 100% satisfeito — se algum item ficou
+   pendente (dependência não entregue, verificação que exige acesso que o
+   Claude Code não tem, etc.), isso vai no `create_log` e no report do passo
+   7; quem decide se aquilo trava a review é o Marcos, não eu. Sempre que
+   houver múltiplas subtasks na mesma leva de trabalho, `submit_for_review`
+   em cada uma. **Nunca** `complete_task` — quem conclui é o Marcos, na UI.
 7. Reportar: o que foi feito, como verificar o Done, e qualquer
    divergência/decisão tomada no caminho.
 
