@@ -14,11 +14,11 @@ static const char*    WIFI_PSK           = SECRET_WIFI_PSK;
 static const char*    HOST               = SECRET_HOST;    // dongle on LAN
 static const uint16_t PORT              = 53970;
 static const uint32_t POLL_INTERVAL_MS  = 10000;           // 10 s
-static const float    BATTERY_CAPACITY_AH = 100.0f;        // nameplate Ah of your pack
-static const long     UTC_OFFSET_SEC    = -3 * 3600;       // BRT = UTC-3; adjust for your zone
+static const float    BATTERY_CAPACITY_AH = SECRET_BATTERY_CAPACITY_AH;
+static const long     UTC_OFFSET_SEC    = SECRET_UTC_OFFSET_SEC;
 
 // Forecast pull (Spec §3: second, independent path — never gates the SoC path).
-static const char*    OUTLOOK_URL             = "https://dashboard-solar.marcosvpj.xyz/outlook.json";
+static const char*    OUTLOOK_URL             = SECRET_OUTLOOK_URL;
 static const uint32_t OUTLOOK_POLL_INTERVAL_MS = 15UL * 60 * 1000;  // 15 min
 // ---------------------------------------------------------------------------
 
