@@ -9,7 +9,7 @@ const (
 	DefaultDerate   = 0.7
 )
 
-// Level is the Spec §4 good/ok/bad generation tier for a day.
+// Level is the good/ok/bad generation tier for a day.
 type Level string
 
 const (
@@ -18,9 +18,9 @@ const (
 	LevelGood Level = "good"
 )
 
-// Thresholds approved by Marcos in CYDSOL-1 (planner log a0e939e8, based on a
-// year of Open-Meteo archive data for this site). Spec §4 still shows the
-// ⚠️ placeholder pending consolidation — propose it be filled from this log.
+// Thresholds derived from a year of Open-Meteo archive data for this site
+// and array — they're specific to this installation's panel size and
+// location, not a general rule of thumb.
 const (
 	thresholdBadOk  = 2.5 // kwh_est below this is bad
 	thresholdOkGood = 4.5 // kwh_est at or above this is good

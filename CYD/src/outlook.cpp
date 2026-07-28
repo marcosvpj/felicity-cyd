@@ -10,7 +10,7 @@ static const uint32_t TIMEOUT_MS = 5000;
 
 bool fetchOutlook(const char* url, String& out) {
     WiFiClientSecure client;
-    client.setInsecure();  // public read-only payload, no cert pinning (Spec §9)
+    client.setInsecure();  // public read-only payload, no cert pinning
 
     HTTPClient http;
     http.setConnectTimeout(TIMEOUT_MS);
@@ -106,8 +106,8 @@ ResolvedForecast resolveOutlook(const Outlook& cache, const char* todayDate, tim
                         ? (uint32_t)(nowEpoch - fetchedEpoch)
                         : 0;
 
-    // Cache days arrive in chronological order from the VPS (Spec §4) —
-    // no re-sort needed for up to 3 entries.
+    // Cache days arrive in chronological order from the VPS — no re-sort
+    // needed for up to 3 entries.
     for (uint8_t i = 0; i < cache.count && r.count < 3; i++) {
         if (strcmp(cache.days[i].date, todayDate) > 0) {
             r.days[r.count++] = cache.days[i];

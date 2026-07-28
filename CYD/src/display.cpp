@@ -15,9 +15,9 @@ void displayInit() {
     digitalWrite(TFT_BL, HIGH);
 }
 
-// Spec §7 palette. No custom condensed font asset yet (CYDSOL-8 note /
-// §6.1): built-in TFT_eSPI fonts are used as fallback, so identity is
-// approximate until the font is converted and dropped into CYD/.
+// No custom condensed font asset yet: built-in TFT_eSPI fonts are used as
+// fallback, so identity is approximate until the font is converted and
+// dropped into CYD/.
 static uint16_t COL_DIVIDER, COL_LABEL, COL_GOOD, COL_BAD, COL_OK;
 
 static void initPalette() {
@@ -31,7 +31,7 @@ static void initPalette() {
     done = true;
 }
 
-// Forecast level -> color (Spec §7): good=green, bad=orange, ok=neutral.
+// Forecast level -> color: good=green, bad=orange, ok=neutral.
 // Never derived from weathercode -- level/kwh_est is the only input.
 static uint16_t levelColor(const char* level) {
     if (!strcmp(level, "good")) return COL_GOOD;
@@ -39,8 +39,8 @@ static uint16_t levelColor(const char* level) {
     return COL_OK;
 }
 
-// SoC number color by range (Spec §7). Red is reserved for this -- never
-// used for a bad forecast, which stays orange.
+// SoC number color by range. Red is reserved for this -- never used for a
+// bad forecast, which stays orange.
 static uint16_t socColor(float soc) {
     if (soc < 50) return TFT_RED;
     if (soc < 70) return TFT_YELLOW;
@@ -54,9 +54,9 @@ static void fmtHM(char* buf, size_t sz, float hours) {
     else        snprintf(buf, sz, "%dm",       m);
 }
 
-// Procedural sky icons (Spec §7: distinct by SHAPE + color, not hue alone --
-// the ILI9341's viewing-angle shift can bring green and orange/yellow close
-// together from the side).
+// Procedural sky icons, distinct by SHAPE + color, not hue alone -- the
+// ILI9341's viewing-angle shift can bring green and orange/yellow close
+// together from the side.
 static void drawSun(int cx, int cy, int size, uint16_t color) {
     int r = size / 3;
     tft.fillCircle(cx, cy, r, color);
@@ -93,15 +93,15 @@ void displayReading(const BatteryReading& r, float capacityAh,
                     uint16_t histCount, uint16_t histSize,
                     uint32_t histSpanSec, const char* timeStr,
                     const ResolvedForecast& outlook) {
-    (void)histSpanSec;  // base region title is the fixed "SoC 24h" of Spec §6.1,
-                         // not a dynamic span -- v0 accepts a gap post-reboot (§6).
+    (void)histSpanSec;  // base region title is the fixed "SoC 24h", not a
+                         // dynamic span -- v0 accepts a gap post-reboot.
     initPalette();
 
     tft.fillScreen(TFT_BLACK);
     tft.drawFastVLine(240, 0, 168, COL_DIVIDER);
     tft.drawFastHLine(0, 168, 320, COL_DIVIDER);
 
-    // ── Topo-esquerda: estado atual (0,0)-(239,167) ── Spec §6.1 ──
+    // ── Top-left: current state (0,0)-(239,167) ──
     tft.setTextColor(COL_LABEL, TFT_BLACK);
     tft.setTextDatum(TL_DATUM);
     tft.drawString("SOLAR", 8, 8, 1);
@@ -150,7 +150,7 @@ void displayReading(const BatteryReading& r, float capacityAh,
     tft.setTextColor(COL_LABEL, TFT_BLACK);
     tft.drawString("A", x, 154, 2);
 
-    // ── Topo-direita: previsao (240,0)-(319,167), ~80px ── Spec §6.1 ──
+    // ── Top-right: forecast (240,0)-(319,167), ~80px ──
     tft.setTextColor(COL_LABEL, TFT_BLACK);
     tft.setTextDatum(TL_DATUM);
     tft.drawString("PREV.", 248, 8, 1);
@@ -185,8 +185,8 @@ void displayReading(const BatteryReading& r, float capacityAh,
         tft.setTextDatum(BL_DATUM);
         tft.drawString(freshBuf, 248, 159, 1);
     } else if (outlook.degraded) {
-        // Spec §5: `degraded` is the authoritative signal (no cached date is
-        // still in the future) -- gray "?" instead of an icon. `cacheAgeSec`
+        // `degraded` is the authoritative signal (no cached date is still
+        // in the future) -- gray "?" instead of an icon. `cacheAgeSec`
         // further distinguishes "had a cache, it went stale" from "never
         // fetched at all" (both are `degraded`, per resolveOutlook).
         tft.setTextColor(COL_LABEL, TFT_BLACK);
@@ -202,7 +202,7 @@ void displayReading(const BatteryReading& r, float capacityAh,
         }
     }
 
-    // ── Base: grafico 24h (0,168)-(319,239) ── Spec §6.1 ──
+    // ── Bottom: 24h chart (0,168)-(319,239) ──
     tft.setTextColor(COL_LABEL, TFT_BLACK);
     tft.setTextDatum(TL_DATUM);
     tft.drawString("SoC 24h", 8, 172, 1);

@@ -17,15 +17,15 @@ static const uint32_t POLL_INTERVAL_MS  = 10000;           // 10 s
 static const float    BATTERY_CAPACITY_AH = SECRET_BATTERY_CAPACITY_AH;
 static const long     UTC_OFFSET_SEC    = SECRET_UTC_OFFSET_SEC;
 
-// Forecast pull (Spec §3: second, independent path — never gates the SoC path).
+// Forecast pull — a second, independent path that never gates the SoC path.
 static const char*    OUTLOOK_URL             = SECRET_OUTLOOK_URL;
 static const uint32_t OUTLOOK_POLL_INTERVAL_MS = 15UL * 60 * 1000;  // 15 min
 // ---------------------------------------------------------------------------
 
 // --- SOC history (circular buffer, sampled on its own cadence) -------------
-// Spec §6: ~288 samples at 5 min = 24 h of sparkline history. Sampling runs
-// on its own timer, decoupled from the 10 s battery poll (POLL_INTERVAL_MS)
-// -- otherwise the buffer would need 8640 slots to cover the same 24 h.
+// ~288 samples at 5 min = 24 h of sparkline history. Sampling runs on its
+// own timer, decoupled from the 10 s battery poll (POLL_INTERVAL_MS) --
+// otherwise the buffer would need 8640 slots to cover the same 24 h.
 static const uint32_t HIST_SAMPLE_INTERVAL_MS = 5UL * 60 * 1000;  // 5 min
 static const uint16_t HIST_SIZE = 288;   // 288 × 5 min = 24 h of history
 static uint8_t  socHist[HIST_SIZE];
@@ -53,7 +53,7 @@ static void getTimeStr(char* buf, size_t sz) {
 }
 
 // Full date+time for the outlook fetch log — the point of NTP here is date
-// resolution (Spec §5), so the log must show the date, not just HH:MM.
+// resolution, so the log must show the date, not just HH:MM.
 static void getTimestampStr(char* buf, size_t sz) {
     struct tm ti;
     if (getLocalTime(&ti, 0)) strftime(buf, sz, "%Y-%m-%dT%H:%M:%S", &ti);
@@ -64,14 +64,14 @@ static void getTimestampStr(char* buf, size_t sz) {
 static BatteryReading lastGood;
 static uint32_t       lastOutlookFetchMs = 0;
 static bool           outlookFetchedOnce = false;
-static Outlook        cachedOutlook = {};  // last known-good forecast (Spec §3 camada 2 / §5)
+static Outlook        cachedOutlook = {};  // last known-good forecast (survives reboot via NVS)
 // Tracks whether NVS currently holds `cachedOutlook`, so a fetch that
 // returns the same `fetched` timestamp doesn't skip the NVS write when the
 // *previous* write silently failed (Preferences::begin() can fail) — that
 // would leave the cache stale in NVS forever, undetected.
 static bool           outlookCachePersisted = false;
 
-// Resolves the cache against `today` (Spec §5). Cheap (<=3 strcmp), so
+// Resolves the cache against `today`. Cheap (<=3 strcmp), so
 // called every loop tick to feed the display — not just on the 15-min
 // fetch cycle — so the on-screen forecast (and the degraded state) tracks
 // the calendar date rolling over, not just fetch events.
@@ -142,9 +142,9 @@ void setup() {
     // Wait up to 2 s for NTP; display will show "--:--" if it doesn't arrive
     struct tm ti;
     for (int i = 0; i < 8 && !getLocalTime(&ti, 0); i++) delay(250);
-    // Boot-time proof that the cache survives a reboot (Spec §5 Done):
-    // resolve it against today's date as soon as we have a clock, without
-    // waiting for the first fetch cycle.
+    // Boot-time proof that the cache survives a reboot: resolve it against
+    // today's date as soon as we have a clock, without waiting for the
+    // first fetch cycle.
     if (getLocalTime(&ti, 0)) logResolvedOutlook(currentForecast(true, ti), ti, "boot");
 
     displayStatus("Connecting to battery...", TFT_WHITE);
@@ -161,14 +161,14 @@ void loop() {
     char timeStr[8];
     getTimeStr(timeStr, sizeof(timeStr));
 
-    // Forecast pull — a separate connection from the battery TCP client
-    // (Spec §3), so a fetch failure never corrupts or blocks SoC data.
-    // It does run synchronously here before the read below, so a slow
-    // fetch can delay this cycle's SoC refresh by up to TIMEOUT_MS
-    // (outlook.cpp); harmless at a 15-min cadence for v0.
+    // Forecast pull — a separate connection from the battery TCP client,
+    // so a fetch failure never corrupts or blocks SoC data. It does run
+    // synchronously here before the read below, so a slow fetch can delay
+    // this cycle's SoC refresh by up to TIMEOUT_MS (outlook.cpp); harmless
+    // at a 15-min cadence for v0.
     //
     // Wait for NTP before the first attempt so the log's timestamp is
-    // always real (Spec §5 needs dates, not "unsynced").
+    // always real (dates, not "unsynced").
     struct tm nowTm;
     bool timeSynced = getLocalTime(&nowTm, 0);
     bool outlookDue = timeSynced &&
@@ -196,8 +196,8 @@ void loop() {
                               ts, changed ? "new" : "unchanged",
                               parsed.fetched, parsed.count, outlookCachePersisted);
             } else {
-                // Don't cache a malformed payload over a good one (Spec §5
-                // Done: cache must keep serving the last known-good forecast).
+                // Don't cache a malformed payload over a good one — the cache
+                // must keep serving the last known-good forecast.
                 Serial.printf("[outlook] %s fetch OK but parse failed, raw=%s\n",
                               ts, outlookJson.c_str());
             }
@@ -210,15 +210,15 @@ void loop() {
     // Resolved once per tick, after any cache update above, and reused for
     // both the log (only printed when a fetch was due) and the render
     // (every tick) — so the on-screen forecast also tracks the calendar
-    // date rolling over to "degraded" between fetches (Spec §5).
+    // date rolling over to "degraded" between fetches.
     ResolvedForecast forecast = currentForecast(timeSynced, nowTm);
     if (outlookDue) logResolvedOutlook(forecast, nowTm, "resolve");
 
     BatteryReading r;
     if (readBattery(HOST, PORT, r)) {
         lastGood = r;
-        // History samples at its own 5 min cadence (Spec §6), independent of
-        // this 10 s poll -- the buffer is sized for that slower rate.
+        // History samples at its own 5 min cadence, independent of this
+        // 10 s poll -- the buffer is sized for that slower rate.
         if (!histPushedOnce || millis() - lastHistPushMs >= HIST_SAMPLE_INTERVAL_MS) {
             histPushedOnce = true;
             lastHistPushMs = millis();

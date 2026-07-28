@@ -1,8 +1,8 @@
-// CYDSOL-3: generates outlook.json (Spec §4) from Open-Meteo and writes it
-// atomically to -out. Meant to run as a systemd timer job every 3-6h, with
-// Caddy serving -out as a static file. If the fetch fails, the process exits
-// non-zero without touching -out, so Caddy keeps serving the last good
-// payload (Spec §3, camada 1 VPS cache) until the next timer run succeeds.
+// Generates outlook.json from Open-Meteo and writes it atomically to -out.
+// Meant to run as a systemd timer job every 3-6h, with Caddy serving -out
+// as a static file. If the fetch fails, the process exits non-zero without
+// touching -out, so Caddy keeps serving the last good payload (the VPS-side
+// cache layer) until the next timer run succeeds.
 package main
 
 import (
@@ -17,12 +17,12 @@ import (
 	"cydsolar-api/output"
 )
 
-// Spec §9: propriedade em Alfredo Wagner - SC.
+// Site coordinates. Change these for your own location.
 const (
 	latitude  = -27.7898
 	longitude = -49.2854
 
-	// outlookDays is the "amanhã + 2" window the display shows (Spec §4/§6).
+	// outlookDays is the "tomorrow + 2" window the display shows.
 	outlookDays = 3
 	// requestDays includes today so we can drop it: Open-Meteo's "today" is
 	// already partially elapsed and isn't part of the outlook.
@@ -32,7 +32,7 @@ const (
 )
 
 func main() {
-	outPath := flag.String("out", "outlook.json", "path to write outlook.json (Spec §4); left untouched if this run fails")
+	outPath := flag.String("out", "outlook.json", "path to write outlook.json; left untouched if this run fails")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -65,7 +65,7 @@ func run(ctx context.Context, client *openmeteo.Client, outPath string, now time
 	days := make([]outlook.DayEstimate, 0, outlookDays)
 	for _, e := range estimates {
 		if e.Date == today {
-			continue // hoje já está parcialmente decorrido, não faz parte da previsão (Spec §4/§6).
+			continue // today is already partially elapsed, not part of the outlook.
 		}
 		days = append(days, e)
 		if len(days) == outlookDays {
@@ -76,8 +76,8 @@ func run(ctx context.Context, client *openmeteo.Client, outPath string, now time
 	// date always matches exactly one of them, so a valid response yields
 	// exactly outlookDays here. Anything else (empty/short body from
 	// Open-Meteo) is a semantically bad response — refuse to overwrite the
-	// last good outlook.json with it (Spec §3, camada 1 VPS cache covers
-	// "API returns junk", not just "API is down").
+	// last good outlook.json with it (the cache layer covers "API returns
+	// junk", not just "API is down").
 	if len(days) != outlookDays {
 		return fmt.Errorf("got %d outlook days after dropping today, want %d — refusing to overwrite last good payload", len(days), outlookDays)
 	}

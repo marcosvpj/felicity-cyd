@@ -1,6 +1,6 @@
-// Package output serializes outlook estimates into the Spec §4 outlook.json
-// contract and writes them to disk. This is the infra/serialization layer —
-// the outlook package stays free of encoding/json and os.
+// Package output serializes outlook estimates into the outlook.json contract
+// and writes them to disk. This is the infra/serialization layer — the
+// outlook package stays free of encoding/json and os.
 package output
 
 import (
@@ -14,24 +14,24 @@ import (
 	"cydsolar-api/outlook"
 )
 
-// Day is one entry of the Spec §4 outlook.json "days" array.
+// Day is one entry of the outlook.json "days" array.
 type Day struct {
 	Date   string  `json:"date"`
 	Level  string  `json:"level"`
 	KwhEst float64 `json:"kwh_est"`
 }
 
-// Payload is the Spec §4 outlook.json contract.
+// Payload is the outlook.json wire contract.
 type Payload struct {
 	Fetched string `json:"fetched"`
 	Days    []Day  `json:"days"`
 }
 
 // BuildPayload converts domain estimates into the wire contract. kwh_est is
-// rounded to 1 decimal to match the Spec §4 example and avoid raw float
-// noise (e.g. 2.7734999999999999). Level is re-derived from the rounded
-// value so the two fields can never disagree at a threshold boundary (e.g.
-// an unrounded 2.4999 must not emit level=bad next to kwh_est=2.5).
+// rounded to 1 decimal to avoid raw float noise (e.g. 2.7734999999999999).
+// Level is re-derived from the rounded value so the two fields can never
+// disagree at a threshold boundary (e.g. an unrounded 2.4999 must not emit
+// level=bad next to kwh_est=2.5).
 func BuildPayload(estimates []outlook.DayEstimate, fetched time.Time) Payload {
 	days := make([]Day, 0, len(estimates))
 	for _, e := range estimates {
@@ -52,8 +52,8 @@ func BuildPayload(estimates []outlook.DayEstimate, fetched time.Time) Payload {
 // temp file in the same directory, then renames it into place, so a reader
 // (Caddy) never observes a partial write. Write is only ever called after a
 // successful Open-Meteo fetch — if the caller returns early on a fetch
-// error, path is left untouched, which is the Spec §3 "camada 1" VPS cache
-// (last good response keeps being served).
+// error, path is left untouched, so the last good response keeps being
+// served.
 func Write(path string, payload Payload) error {
 	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {

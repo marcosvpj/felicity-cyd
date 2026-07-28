@@ -18,7 +18,7 @@ import (
 
 // fakeOpenMeteo serves a fixed hourly response: "today" plus 3 forecast days,
 // each with a constant W/m² value chosen so its kwh_est lands in a known
-// Spec §7 tier (bad/ok/good), so the test also pins down the rounding and
+// level tier (bad/ok/good), so the test also pins down the rounding and
 // level boundaries end to end.
 func fakeOpenMeteo(t *testing.T, today time.Time) *httptest.Server {
 	t.Helper()
