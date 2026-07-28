@@ -1,5 +1,5 @@
 [Unit]
-Description=Generate outlook.json (Spec §4) from Open-Meteo
+Description=Generate outlook.json from Open-Meteo
 Wants=network-online.target
 After=network-online.target
 
@@ -9,4 +9,8 @@ Type=oneshot
 # Caddy's site root actually is) so the written file is Caddy-readable.
 User=cydsolar
 Group=cydsolar
-ExecStart=/opt/cydsolar-api/cydsolar-api -out /var/www/dashboard-solar/outlook.json
+# Provides LATITUDE/LONGITUDE -- not versioned, created once on the VPS
+# (see API/deploy/README.md). Deploy only ever overwrites this unit file,
+# never this env file, so the real coordinates never pass through the repo.
+EnvironmentFile=/etc/cydsolar/coords.env
+ExecStart=/opt/cydsolar-api/cydsolar-api -out /var/www/dashboard-solar/outlook.json -lat ${LATITUDE} -lon ${LONGITUDE}

@@ -1,5 +1,5 @@
 [Unit]
-Description=Run cydsolar-outlook.service every 4h (Spec §3: 3-6h cadence)
+Description=Run cydsolar-outlook.service every 4h
 
 [Timer]
 OnCalendar=*-*-* 0/4:00:00

@@ -16,6 +16,13 @@ import (
 	"cydsolar-api/output"
 )
 
+// Arbitrary coordinates for tests -- fakeOpenMeteo ignores the query string
+// entirely, so any values exercise the same code path.
+const (
+	testLat = 0.0
+	testLon = 0.0
+)
+
 // fakeOpenMeteo serves a fixed hourly response: "today" plus 3 forecast days,
 // each with a constant W/m² value chosen so its kwh_est lands in a known
 // level tier (bad/ok/good), so the test also pins down the rounding and
@@ -54,7 +61,7 @@ func TestRun_WritesContractPayload(t *testing.T) {
 	outPath := filepath.Join(dir, "outlook.json")
 	client := openmeteo.NewClientWithBaseURL(server.URL)
 
-	if err := run(context.Background(), client, outPath, today); err != nil {
+	if err := run(context.Background(), client, outPath, testLat, testLon, today); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -91,7 +98,7 @@ func TestRun_OpenMeteoDown_LeavesLastGoodPayloadUntouched(t *testing.T) {
 	outPath := filepath.Join(dir, "outlook.json")
 	goodClient := openmeteo.NewClientWithBaseURL(goodServer.URL)
 
-	if err := run(context.Background(), goodClient, outPath, today); err != nil {
+	if err := run(context.Background(), goodClient, outPath, testLat, testLon, today); err != nil {
 		t.Fatalf("seeding good run: %v", err)
 	}
 	before, err := os.ReadFile(outPath)
@@ -105,7 +112,7 @@ func TestRun_OpenMeteoDown_LeavesLastGoodPayloadUntouched(t *testing.T) {
 	defer downServer.Close()
 	downClient := openmeteo.NewClientWithBaseURL(downServer.URL)
 
-	err = run(context.Background(), downClient, outPath, today.Add(4*time.Hour))
+	err = run(context.Background(), downClient, outPath, testLat, testLon, today.Add(4*time.Hour))
 	if err == nil {
 		t.Fatal("run with Open-Meteo down: got nil error, want an error")
 	}
@@ -128,7 +135,7 @@ func TestRun_OpenMeteoEmptyBody_LeavesLastGoodPayloadUntouched(t *testing.T) {
 	outPath := filepath.Join(dir, "outlook.json")
 	goodClient := openmeteo.NewClientWithBaseURL(goodServer.URL)
 
-	if err := run(context.Background(), goodClient, outPath, today); err != nil {
+	if err := run(context.Background(), goodClient, outPath, testLat, testLon, today); err != nil {
 		t.Fatalf("seeding good run: %v", err)
 	}
 	before, err := os.ReadFile(outPath)
@@ -146,7 +153,7 @@ func TestRun_OpenMeteoEmptyBody_LeavesLastGoodPayloadUntouched(t *testing.T) {
 	defer emptyServer.Close()
 	emptyClient := openmeteo.NewClientWithBaseURL(emptyServer.URL)
 
-	err = run(context.Background(), emptyClient, outPath, today.Add(4*time.Hour))
+	err = run(context.Background(), emptyClient, outPath, testLat, testLon, today.Add(4*time.Hour))
 	if err == nil {
 		t.Fatal("run with empty Open-Meteo body: got nil error, want an error")
 	}

@@ -10,6 +10,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"time"
 
 	"cydsolar-api/openmeteo"
@@ -17,11 +18,7 @@ import (
 	"cydsolar-api/output"
 )
 
-// Site coordinates. Change these for your own location.
 const (
-	latitude  = -27.7898
-	longitude = -49.2854
-
 	// outlookDays is the "tomorrow + 2" window the display shows.
 	outlookDays = 3
 	// requestDays includes today so we can drop it: Open-Meteo's "today" is
@@ -33,18 +30,24 @@ const (
 
 func main() {
 	outPath := flag.String("out", "outlook.json", "path to write outlook.json; left untouched if this run fails")
+	lat := flag.Float64("lat", math.NaN(), "site latitude (required)")
+	lon := flag.Float64("lon", math.NaN(), "site longitude (required)")
 	flag.Parse()
+
+	if math.IsNaN(*lat) || math.IsNaN(*lon) {
+		log.Fatal("-lat and -lon are both required")
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	client := openmeteo.NewClient()
-	if err := run(ctx, client, *outPath, time.Now()); err != nil {
+	if err := run(ctx, client, *outPath, *lat, *lon, time.Now()); err != nil {
 		log.Fatalf("outlook generation failed, %s left untouched: %v", *outPath, err)
 	}
 }
 
-func run(ctx context.Context, client *openmeteo.Client, outPath string, now time.Time) error {
+func run(ctx context.Context, client *openmeteo.Client, outPath string, latitude, longitude float64, now time.Time) error {
 	resp, err := client.FetchShortwaveRadiation(ctx, latitude, longitude, requestDays)
 	if err != nil {
 		return fmt.Errorf("fetching forecast: %w", err)

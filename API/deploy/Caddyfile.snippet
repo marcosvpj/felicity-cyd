@@ -1,6 +1,6 @@
-# Spec §9 endpoint: https://dashboard-solar.marcosvpj.xyz/outlook.json
+# Serves outlook.json as a static file over HTTPS.
 # Adjust root to wherever cydsolar-outlook.service's -out actually writes.
-dashboard-solar.marcosvpj.xyz {
+<your-domain> {
 	root * /var/www/dashboard-solar
 	file_server
 }

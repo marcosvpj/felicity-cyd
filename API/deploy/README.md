@@ -1,8 +1,8 @@
-# Deploy: outlook.json generator (CYDSOL-3)
+# Deploy: outlook.json generator
 
 Builds and installs the systemd timer that regenerates `outlook.json`
-(Spec §4) every ~4h, and the Caddy config that serves it statically at
-the Spec §9 endpoint.
+every ~4h, and the Caddy config that serves it statically at a fixed
+path on the VPS.
 
 ## Deploy
 
@@ -38,11 +38,23 @@ Merge `Caddyfile.snippet` into the real Caddyfile (adjust `root` to match
 touch Caddy config — it only ships the Go binary and the two systemd unit
 files, so a Caddyfile change is still a manual, one-time step.
 
+The binary requires `-lat`/`-lon` and refuses to run without them.
+`cydsolar-outlook.service` reads them from `/etc/cydsolar/coords.env`,
+which is not versioned and not touched by CI/CD — create it once on the
+VPS:
+
+```sh
+sudo mkdir -p /etc/cydsolar
+sudo tee /etc/cydsolar/coords.env <<'EOF'
+LATITUDE=<your site's latitude>
+LONGITUDE=<your site's longitude>
+EOF
+sudo chmod 600 /etc/cydsolar/coords.env
+```
+
 ### GitHub repo secrets required for the `Deploy API` workflow
 
-`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` — already configured on this repo,
-reusing the same Contabo VPS/root key the `planner` repo deploys with
-(`dashboard-solar.marcosvpj.xyz` and planner's domain are the same box).
+`VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` — already configured on this repo.
 These are per-repo secrets — they don't carry over automatically between
 repos even when the values match.
 
@@ -51,7 +63,7 @@ repos even when the values match.
 ```sh
 systemctl status cydsolar-outlook.timer
 journalctl -u cydsolar-outlook.service -n 50
-curl https://dashboard-solar.marcosvpj.xyz/outlook.json
+curl https://<your-domain>/outlook.json
 ```
 
 If Open-Meteo is down, the service exits non-zero (see journal) and
