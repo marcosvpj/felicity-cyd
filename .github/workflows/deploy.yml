@@ -69,6 +69,11 @@ jobs:
           key: ${{ secrets.VPS_SSH_KEY }}
           script: |
             set -e
+            test -f /etc/cydsolar/coords.env || {
+              echo "Missing /etc/cydsolar/coords.env -- see API/deploy/README.md" \
+                   "for the one-time setup to create it with LATITUDE/LONGITUDE." >&2
+              exit 1
+            }
             id -u cydsolar >/dev/null 2>&1 || useradd --system --no-create-home cydsolar
             mkdir -p /opt/cydsolar-api /var/www/dashboard-solar
             install -o cydsolar -g cydsolar -m 755 \
