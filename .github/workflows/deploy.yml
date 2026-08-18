@@ -75,10 +75,10 @@ jobs:
               exit 1
             }
             id -u cydsolar >/dev/null 2>&1 || useradd --system --no-create-home cydsolar
-            mkdir -p /opt/cydsolar-api /var/www/dashboard-solar
+            mkdir -p /opt/cydsolar-api /var/www/dashboard-solar /var/lib/cydsolar
             install -o cydsolar -g cydsolar -m 755 \
               /tmp/cydsolar-deploy/cydsolar-api /opt/cydsolar-api/cydsolar-api
-            chown -R cydsolar:cydsolar /opt/cydsolar-api /var/www/dashboard-solar
+            chown -R cydsolar:cydsolar /opt/cydsolar-api /var/www/dashboard-solar /var/lib/cydsolar
             cp /tmp/cydsolar-deploy/cydsolar-outlook.service \
               /tmp/cydsolar-deploy/cydsolar-outlook.timer /etc/systemd/system/
             rm -rf /tmp/cydsolar-deploy

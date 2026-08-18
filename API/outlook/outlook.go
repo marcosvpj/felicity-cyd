@@ -51,6 +51,10 @@ type HourlyReading struct {
 type DayEstimate struct {
 	Date   string // YYYY-MM-DD
 	KwhEst float64
+	// Psh (peak sun hours) is kept alongside KwhEst because it's independent
+	// of panelKwp/derate: a future derate recalibration can't reconstruct
+	// kwh_est from a KwhEst-only history, but it can from Psh.
+	Psh float64
 }
 
 // Estimate groups hourly readings by calendar day and derives kWh_est per day:
@@ -74,6 +78,7 @@ func Estimate(readings []HourlyReading, panelKwp, derate float64) []DayEstimate 
 		estimates = append(estimates, DayEstimate{
 			Date:   day,
 			KwhEst: psh * panelKwp * derate,
+			Psh:    psh,
 		})
 	}
 	return estimates

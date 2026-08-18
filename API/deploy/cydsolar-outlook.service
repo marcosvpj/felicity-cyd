@@ -13,4 +13,4 @@ Group=cydsolar
 # (see API/deploy/README.md). Deploy only ever overwrites this unit file,
 # never this env file, so the real coordinates never pass through the repo.
 EnvironmentFile=/etc/cydsolar/coords.env
-ExecStart=/opt/cydsolar-api/cydsolar-api -out /var/www/dashboard-solar/outlook.json -lat ${LATITUDE} -lon ${LONGITUDE}
+ExecStart=/opt/cydsolar-api/cydsolar-api -out /var/www/dashboard-solar/outlook.json -history /var/lib/cydsolar/forecast-history.ndjson -lat ${LATITUDE} -lon ${LONGITUDE}

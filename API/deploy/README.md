@@ -23,9 +23,9 @@ access:
 ```sh
 go build -o cydsolar-api .            # from API/
 sudo useradd --system --no-create-home cydsolar   # if it doesn't exist yet
-sudo mkdir -p /opt/cydsolar-api /var/www/dashboard-solar
+sudo mkdir -p /opt/cydsolar-api /var/www/dashboard-solar /var/lib/cydsolar
 sudo cp cydsolar-api /opt/cydsolar-api/
-sudo chown -R cydsolar:cydsolar /opt/cydsolar-api /var/www/dashboard-solar
+sudo chown -R cydsolar:cydsolar /opt/cydsolar-api /var/www/dashboard-solar /var/lib/cydsolar
 
 sudo cp deploy/cydsolar-outlook.service deploy/cydsolar-outlook.timer /etc/systemd/system/
 sudo systemctl daemon-reload
@@ -64,6 +64,19 @@ repos even when the values match.
 systemctl status cydsolar-outlook.timer
 journalctl -u cydsolar-outlook.service -n 50
 curl https://<your-domain>/outlook.json
+tail -f /var/lib/cydsolar/forecast-history.ndjson
+```
+
+`/var/lib/cydsolar/forecast-history.ndjson` gets one line appended per run
+(not served by Caddy — it's outside `/var/www`). Worth including in whatever
+backs up the VPS: unlike `outlook.json`, it isn't reproducible after the
+fact if lost.
+
+Pull `(run_at, date, psh)` triples out for a spreadsheet:
+
+```sh
+jq -r '.run_at as $r | .days[] | [$r, .date, .psh] | @csv' \
+  /var/lib/cydsolar/forecast-history.ndjson
 ```
 
 If Open-Meteo is down, the service exits non-zero (see journal) and

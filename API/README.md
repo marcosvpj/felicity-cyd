@@ -85,6 +85,7 @@ main.go            wiring: fetch -> adapt -> estimate -> serialize -> write
 openmeteo/         infra: HTTP client for the forecast API
 outlook/           domain: irradiance -> daily kWh estimate, level thresholds
 output/            infra: the outlook.json wire contract + atomic write
+history/           infra: the forecast-history.ndjson append-only log
 deploy/            systemd units, Caddy snippet, deployment notes
 ```
 
@@ -109,10 +110,38 @@ Caddy can never observe a half-written JSON.
 Covered by `TestRun_OpenMeteoDown_LeavesLastGoodPayloadUntouched` in
 `main_test.go`.
 
+## Forecast history
+
+Every run also appends one NDJSON line to `-history` (default
+`forecast-history.ndjson`), recording the whole run — not just `outlook.json`'s
+published fields:
+
+```json
+{"run_at":"2026-07-24T18:00:00Z","kwp":1.1,"derate":0.7,
+ "days":[{"date":"2026-07-25","psh":4.9,"kwh_est":3.8,"level":"ok"}]}
+```
+
+`psh` (peak sun hours) is stored raw, separate from `kwh_est`: it's the
+quantity independent of the `kwp`/`derate` model, so a future derate
+recalibration can still reconstruct what would have been published, which a
+`kwh_est`-only history couldn't. The run — all forecast days in one line — is
+the archived unit, not the day, so forecast accuracy can later be compared by
+horizon (a next-day estimate vs. a two-day-out one).
+
+Archiving a run is secondary to publishing it: a failure to append (e.g. the
+history file's directory doesn't exist) is logged and does not fail the run
+or affect `outlook.json`. `outlook.json` is always written first.
+
+There's no reader for this file yet — it exists purely to stop losing
+forecast history to each run overwriting the last one. `jq` is enough to pull
+it into a spreadsheet once there's a use for it.
+
 ## Configuration
 
 Site latitude and longitude are **required command-line flags** (`-lat`,
-`-lon`) — the binary refuses to start without them. Panel size, derate, and the
+`-lon`) — the binary refuses to start without them. `-out` and `-history`
+default to relative paths for local runs; production passes absolute ones
+explicitly (see `deploy/cydsolar-outlook.service`). Panel size, derate, and the
 level thresholds are **compile-time constants** (`outlook/outlook.go`). Fine
 for a single-site tool; if you're running this for your own property, edit and
 rebuild for those, or pass your own `-lat`/`-lon` at the call site.
@@ -122,7 +151,9 @@ rebuild for those, or pass your own `-lat`/`-lon` at the call site.
 ```sh
 go test ./...
 go build -o cydsolar-api .
-./cydsolar-api -out /var/www/dashboard-solar/outlook.json -lat <your-lat> -lon <your-lon>
+./cydsolar-api -out /var/www/dashboard-solar/outlook.json \
+  -history /var/lib/cydsolar/forecast-history.ndjson \
+  -lat <your-lat> -lon <your-lon>
 ```
 
 CI ships it on every push to `main` touching `API/**`. Full deployment
