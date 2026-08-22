@@ -25,6 +25,22 @@ Defaults: `ENV=cyd`, `PORT=/dev/ttyUSB0`, `BAUD=921600`. Override inline:
 > If your PlatformIO core lives somewhere other than `~/.platformio`, pass it in:
 > `make flash PIO_CORE=/path/to/.platformio`.
 
+### Updating over the air
+
+Once a device is running firmware with OTA support (i.e. anything built after
+this feature landed), later updates can be pushed over WiFi instead of USB —
+useful when the board isn't within reach of a cable. The uploading machine
+must be on the same LAN as the device:
+
+```sh
+CYD_OTA_PASSWORD=<value from secrets.h> make ota
+```
+
+The device advertises itself via mDNS as `cyd-solar.local`, so this works
+without knowing its current DHCP-assigned IP. The first flash on a fresh
+board still has to go over USB (`make upload`) — OTA only updates a device
+that's already running this firmware.
+
 ### Board
 
 Assumes **ESP32-2432S028R** — the common CYD variant: ILI9341, 320×240,
@@ -46,6 +62,7 @@ Everything environment-specific lives in `include/secrets.h` (gitignored):
 #define SECRET_OUTLOOK_URL "https://your-outlook-host.example/outlook.json"
 #define SECRET_BATTERY_CAPACITY_AH 100.0f  // nameplate Ah of your pack
 #define SECRET_UTC_OFFSET_SEC (-3 * 3600)  // your timezone
+#define SECRET_OTA_PASSWORD "..."          // gates OTA updates, see below
 ```
 
 `SECRET_OUTLOOK_URL` points at your own forecast service — see
@@ -61,12 +78,13 @@ Things still hardcoded in `main.cpp` that you will want to change:
 
 ## Architecture
 
-Four translation units, each replaceable in isolation:
+Five translation units, each replaceable in isolation:
 
 ```
 felicity.{h,cpp}   protocol client   host/port  -> BatteryReading
 outlook.{h,cpp}    forecast client   URL        -> Outlook -> ResolvedForecast
 display.{h,cpp}    renderer          structs    -> pixels
+ota.{h,cpp}        firmware updates  ArduinoOTA callbacks -> flash
 main.cpp           orchestration     WiFi, NTP, cadence, ring buffer, errors
 ```
 

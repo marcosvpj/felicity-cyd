@@ -10,7 +10,7 @@ BUILD_DIR   := .pio/build/$(ENV)
 ESPTOOL     := $(PIO_CORE)/packages/tool-esptoolpy/esptool.py
 BOOT_APP0   := $(PIO_CORE)/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin
 
-.PHONY: build flash upload
+.PHONY: build flash upload ota
 
 build:
 	pio run -e $(ENV)
@@ -28,3 +28,9 @@ flash:
 		0x10000 $(BUILD_DIR)/firmware.bin
 
 upload: build flash
+
+# Push a new build over the LAN instead of USB. Needs CYD_OTA_PASSWORD set
+# (see platformio.ini) and the device already running firmware with OTA
+# support -- see CYD/README.md.
+ota:
+	pio run -e cyd_ota -t upload

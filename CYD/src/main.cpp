@@ -5,6 +5,7 @@
 #include "felicity.h"
 #include "display.h"
 #include "outlook.h"
+#include "ota.h"
 
 // --- Config: fill in for your environment ----------------------------------
 // Provide real values in include/secrets.h (gitignored) — see README.
@@ -16,6 +17,7 @@ static const uint16_t PORT              = 53970;
 static const uint32_t POLL_INTERVAL_MS  = 10000;           // 10 s
 static const float    BATTERY_CAPACITY_AH = SECRET_BATTERY_CAPACITY_AH;
 static const long     UTC_OFFSET_SEC    = SECRET_UTC_OFFSET_SEC;
+static const char*    OTA_PASSWORD       = SECRET_OTA_PASSWORD;
 
 // Forecast pull — a second, independent path that never gates the SoC path.
 static const char*    OUTLOOK_URL             = SECRET_OUTLOOK_URL;
@@ -137,6 +139,8 @@ void setup() {
     }
     Serial.printf("WiFi OK, IP: %s\n", WiFi.localIP().toString().c_str());
 
+    otaInit(OTA_PASSWORD);
+
     configTime(UTC_OFFSET_SEC, 0, "pool.ntp.org", "time.cloudflare.com");
     displayStatus("Syncing time...", TFT_WHITE);
     // Wait up to 2 s for NTP; display will show "--:--" if it doesn't arrive
@@ -151,6 +155,8 @@ void setup() {
 }
 
 void loop() {
+    otaHandle();
+
     if (WiFi.status() != WL_CONNECTED) {
         displayStatus("WiFi lost, retrying", TFT_YELLOW);
         WiFi.reconnect();
@@ -242,5 +248,12 @@ void loop() {
         }
     }
 
-    delay(POLL_INTERVAL_MS);
+    // Poll in short slices rather than one long delay() -- an OTA push
+    // arriving mid-wait needs ArduinoOTA.handle() called every ~tens of ms
+    // to keep up with incoming flash chunks, not just once per 10 s tick.
+    uint32_t waitStart = millis();
+    while (millis() - waitStart < POLL_INTERVAL_MS) {
+        otaHandle();
+        delay(50);
+    }
 }
