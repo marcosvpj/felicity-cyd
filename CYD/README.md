@@ -41,6 +41,15 @@ without knowing its current DHCP-assigned IP. The first flash on a fresh
 board still has to go over USB (`make upload`) — OTA only updates a device
 that's already running this firmware.
 
+If `cyd-solar.local` doesn't resolve — the ESP32's mDNS responder can be
+slow to re-advertise after a WiFi reconnect, which happens routinely at a
+site where the AP is powered off overnight — fall back to the device's IP
+(from your router's DHCP leases, or the serial log at boot):
+
+```sh
+CYD_OTA_PASSWORD=<value from secrets.h> make ota IP=192.168.1.42
+```
+
 ### Board
 
 Assumes **ESP32-2432S028R** — the common CYD variant: ILI9341, 320×240,

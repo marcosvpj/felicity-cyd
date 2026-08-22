@@ -31,6 +31,11 @@ upload: build flash
 
 # Push a new build over the LAN instead of USB. Needs CYD_OTA_PASSWORD set
 # (see platformio.ini) and the device already running firmware with OTA
-# support -- see CYD/README.md.
+# support -- see CYD/README.md. Checked here, not left to platformio.ini's
+# ${sysenv...} interpolation, which silently becomes `--auth=` (empty) and
+# fails as a confusing device-side auth rejection instead of a clear error.
+# IP=<device-ip> overrides the cyd-solar.local mDNS lookup, for when it
+# doesn't resolve -- see CYD/README.md.
 ota:
-	pio run -e cyd_ota -t upload
+	@test -n "$(CYD_OTA_PASSWORD)" || { echo "CYD_OTA_PASSWORD not set -- see CYD/README.md"; exit 1; }
+	pio run -e cyd_ota -t upload $(if $(IP),--upload-port $(IP))
